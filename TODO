@@ -1,0 +1,3 @@
+Automatically Create hive table on target destinations
+Store checkpoint_location in S3
+Better dev workflow

@@ -1,0 +1,1 @@
+spark-submit --jars /usr/lib/hudi/hudi-spark-bundle.jar generator.py
