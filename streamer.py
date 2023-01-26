@@ -1,3 +1,7 @@
+# ----------------------------------------------------------------------------------------
+# Script for streaming data from Hudi Deltastreamer
+# -----------------------------------------------------------------------------------------
+
 import boto3
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import lit
@@ -7,6 +11,10 @@ spark = SparkSession \
   .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") \
   .config("spark.sql.hive.convertMetastoreParquet", "false") \
   .getOrCreate()
+
+# ----------------------------------------------------------------------------------------
+# Settings
+# -----------------------------------------------------------------------------------------
 
 curr_session = boto3.session.Session()
 curr_region = curr_session.region_name
@@ -38,12 +46,14 @@ hudi_streaming_options = {
   'hoodie.datasource.write.reconcile.schema': 'true'
 }
 
+# ----------------------------------------------------------------------------------------
+# Read stream and do transformations
+# -----------------------------------------------------------------------------------------
+
 df = spark.readStream.format("hudi").load(in_path)
 
-# Do basic transformations here
 df = df.withColumn("phone", lit("*** Masked ***"))
 
-# write stream to new hudi table
 df.writeStream.format("hudi") \
     .options(**hudi_streaming_options) \
     .outputMode("append") \
