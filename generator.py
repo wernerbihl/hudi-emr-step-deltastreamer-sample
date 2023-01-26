@@ -24,9 +24,9 @@ fake = Faker()
 # Settings
 # -----------------------------------------------------------------------------------------
 
-database_name = "hudi_raw"
-table_name = "hudi_raw"
-raw_path = "s3://oml-dp-dataplatform-datalabs-eu-west-1/hudi_data/raw/"
+database_name = "hudi"
+table_name = "hudi_in"
+raw_path = "s3://oml-dp-dataplatform-datalabs-eu-west-1/hudi_data/in/"
 
 hudi_options = {
   'hoodie.table.name': table_name,

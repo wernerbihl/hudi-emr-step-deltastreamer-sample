@@ -7,12 +7,12 @@ spark = SparkSession \
   .config("spark.sql.hive.convertMetastoreParquet", "false") \
   .getOrCreate()
 
-hive_database = "hudi_raw"
-hive_target_table = "hudi_processed"
+hive_database = "hudi"
+hive_target_table = "hudi_out"
 
-checkpoint_location = "file:///tmp/checkpoints/hudi_raw"
-raw_path = "s3a://oml-dp-dataplatform-datalabs-eu-west-1/hudi_data/raw/"
-processed_path = "s3a://oml-dp-dataplatform-datalabs-eu-west-1/hudi_data/processed/"
+checkpoint_location = "file:///tmp/checkpoints/hudi"
+in_path = "s3a://oml-dp-dataplatform-datalabs-eu-west-1/hudi_data/in/"
+out_path = "s3a://oml-dp-dataplatform-datalabs-eu-west-1/hudi_data/out/"
 partition_by = 'department'
 
 hudi_streaming_options = {
@@ -34,7 +34,7 @@ hudi_streaming_options = {
   'hoodie.insert.shuffle.parallelism': 2,
 }
 
-df = spark.readStream.format("hudi").load(raw_path)
+df = spark.readStream.format("hudi").load(in_path)
 
 # Do basic transformations here
 df = df.withColumn("phone", lit("*** Masked ***"))
@@ -43,7 +43,7 @@ df = df.withColumn("phone", lit("*** Masked ***"))
 df.writeStream.format("hudi") \
     .options(**hudi_streaming_options) \
     .outputMode("append") \
-    .option("path", processed_path) \
+    .option("path", out_path) \
     .option("checkpointLocation", checkpoint_location) \
     .start() \
     .awaitTermination()
