@@ -24,6 +24,7 @@ s3://oml-dp-dataplatform-datalabs-eu-west-1/hudi_data/out/
 
 Go to SQS and create a standard SQS queue.
 **Name**: Choose any name. I've named mine: "HudiSQS".
+
 **Access Policy**: Click Advanced and then use the following JSON as your policy. Remember to change the Resource in the JSON below and lock it down based on your security requirements:
 
 ```json
@@ -51,10 +52,15 @@ After creation, take note of the SQS URL for Later.
 Go to the S3 bucket you created in step 1, and choose properties. Under "Event Notifications" click "Create event notification".
 
 **Event Name**: Choose a sensible name. I named mine "Hudi SQS In Event"
+
 **Prefix**: The relative path to your "In" S3 location. Based on the example in step 1, I made mine: "hudi_data/in/"
+
 **Suffix**: I'm only interested in parquet files landing in my situation, so I made my suffix ".parquet"
+
 **Event Types**: Check "All object create events"
+
 **Destination**: SQS Queue
+
 **Specify SQS queue**: Select the SQS queue you created in Step 2. If you get an error, please double check your Access Policy in Step 2 to make sure you have given the correct permissions.
 
 I'd recommend you test the connection at this point by dropping a parquet file in the "In" location and then go to your SQS queue and click on "Send and receive messages" and seeing if you can see a message there.
@@ -70,7 +76,7 @@ Change the following three variables in the script depending on your setup:
 ```
 database_name  =  "hudi" # This is the glue data catalog database
 table_name  =  "hudi_in" # This is the glue data catalog table
-raw_path  =  "s3://oml-dp-dataplatform-datalabs-eu-west-1/hudi_data/in/"
+in_path  =  "s3://oml-dp-dataplatform-datalabs-eu-west-1/hudi_data/in/"
 ```
 
 With Amazon EMR release version 5.28.0 and later, Amazon EMR installs Hudi components by default when Spark, Hive, or Presto is installed. Otherwise you'll have to download hudi-spark-bundle from https://mvnrepository.com/artifact/org.apache.hudi/hudi-spark-bundle and placing it somewhere accessible from your script.
@@ -85,7 +91,7 @@ spark-submit --jars /usr/lib/hudi/hudi-spark-bundle.jar generator.py
 
 In this repo there's a very simple script called streamer.py. This file has lots of configuration, so please make sure you follow each line and make sure it's relevant to your setup.
 
-This file will listen for the deltas streaming in from S3/SQS and do a basic transformation (mask the telephone number) before storing it in the "Out" S3 Location
+This file will listen for the deltas streaming in from S3/SQS and do a basic transformation (mask the telephone number) before storing it in the "Out" S3 Location. Store the file somewhere on S3 and note it's location for the next step.
 
 ## Step 6: Add a step to EMR cluster
 
@@ -98,10 +104,13 @@ And place it somewhere on the EMR master or on S3. I've placed mine at: /home/ha
 Then add a step:
 
 **Step Type**: "Custom JAR"
+
 **Name**: Can be anything. I named mine "hudi_deltastreamer"
+
 **JAR location**: command-runner.jar
+
 **Arguments**:
-spark-submit --jars /home/hadoop/aws-java-sdk-sqs-1.12.390.jar,/usr/lib/hudi/hudi-spark-bundle.jar --class org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer s3://oml-dp-dataplatform-datalabs-eu-west-1/hudi_data/streamer.py --continuous --enable-sync --master yarn --deploy-mode client --target-table hudi_in --table-type COPY_ON_WRITE --source-ordering-field ts --target-base-path s3://oml-dp-dataplatform-datalabs-eu-west-1/hudi_data/in/ --source-class org.apache.hudi.utilities.sources.S3EventsSource
+spark-submit --jars /home/hadoop/aws-java-sdk-sqs-1.12.390.jar,/usr/lib/hudi/hudi-spark-bundle.jar --class org.apache.hudi.utilities.deltastreamer.HoodieDeltaStreamer s3://oml-dp-dataplatform-datalabs-eu-west-1/hudi_data/streamer.py --continuous --enable-sync --master yarn --deploy-mode client --source-class org.apache.hudi.utilities.sources.S3EventsSource
 
 Please review each argument and make sure you understand each one before adding the step and adapt it to your needs.
 
@@ -111,4 +120,4 @@ You can now keep using the generate.py file to push new data to the "In" locatio
 
 ## Extra
 
-There is a basics.py file in the repo that shows how to use Hudi to do create, append, update, delete, cluster cleanup, time travel, incremental queries and schema evolution
+There is a basics.py file in the repo that shows how to use Hudi to do create, append, update, delete, cluster cleanup, time travel, incremental queries, schema evolution and how to use dynamo as a lock table.

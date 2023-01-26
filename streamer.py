@@ -1,5 +1,6 @@
+import boto3
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import lit, col, asc, desc
+from pyspark.sql.functions import lit
 
 spark = SparkSession \
   .builder \
@@ -7,31 +8,34 @@ spark = SparkSession \
   .config("spark.sql.hive.convertMetastoreParquet", "false") \
   .getOrCreate()
 
-hive_database = "hudi"
-hive_target_table = "hudi_out"
+curr_session = boto3.session.Session()
+curr_region = curr_session.region_name
 
-checkpoint_location = "file:///tmp/checkpoints/hudi"
-in_path = "s3a://oml-dp-dataplatform-datalabs-eu-west-1/hudi_data/in/"
-out_path = "s3a://oml-dp-dataplatform-datalabs-eu-west-1/hudi_data/out/"
-partition_by = 'department'
+sqs_url = 'https://sqs.eu-west-1.amazonaws.com/767220686680/HudiSQS'
+database_name = "hudi"
+table_name = "hudi_out"
+checkpoint_location = 's3://oml-dp-dataplatform-datalabs-eu-west-1/hudi_data/checkpoints/'
+in_path = "s3://oml-dp-dataplatform-datalabs-eu-west-1/hudi_data/in/"
+out_path = "s3://oml-dp-dataplatform-datalabs-eu-west-1/hudi_data/out/"
+partition_by = 'department' # (Optional) Partitions your data based on a field
 
 hudi_streaming_options = {
-  'hoodie.table.name': hive_target_table,
-  'hoodie.deltastreamer.s3.source.queue.url': 'https://sqs.eu-west-1.amazonaws.com/767220686680/HudiSQS',
-  'hoodie.deltastreamer.s3.source.queue.region': 'eu-west-1',
+  'hoodie.table.name': table_name,
+  'hoodie.database.name': database_name,
+  'hoodie.deltastreamer.s3.source.queue.url': sqs_url,
+  'hoodie.deltastreamer.s3.source.queue.region': curr_region,
+  'hoodie.datasource.hive_sync.database': database_name,
+  'hoodie.datasource.hive_sync.table': table_name,
+  'hoodie.datasource.hive_sync.create_managed_table': 'true',
+  'hoodie.datasource.hive_sync.enable': 'true',
+  'hoodie.datasource.hive_sync.mode': 'hms',
+  "hoodie.datasource.write.storage.type": "COPY_ON_WRITE",
   'hoodie.datasource.write.recordkey.field': 'emp_id',
   'hoodie.datasource.write.partitionpath.field': partition_by,
-  'hoodie.datasource.write.table.name': hive_target_table,
   'hoodie.datasource.write.operation': 'upsert',
-  'hoodie.datasource.write.precombine.field': partition_by,
-  'hoodie.datasource.write.hive_style_partitioning': True,
-  'hoodie.datasource.write.keygenerator.class': 'org.apache.hudi.keygen.SimpleKeyGenerator',
-  'hoodie.datasource.hive_sync.partition_extractor_class': 'org.apache.hudi.hive.MultiPartKeysValueExtractor',
-  'hoodie.datasource.hive_sync.database': hive_database,
-  'hoodie.datasource.hive_sync.partition_fields': partition_by,
-  'hoodie.datasource.hive_sync.table': hive_target_table,
-  'hoodie.upsert.shuffle.parallelism': 2,
-  'hoodie.insert.shuffle.parallelism': 2,
+  'hoodie.datasource.write.precombine.field': 'ts',
+  'hoodie.datasource.write.hive_style_partitioning': 'true',
+  'hoodie.datasource.write.reconcile.schema': 'true'
 }
 
 df = spark.readStream.format("hudi").load(in_path)
