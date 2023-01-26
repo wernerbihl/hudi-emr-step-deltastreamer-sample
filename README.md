@@ -108,3 +108,7 @@ Please review each argument and make sure you understand each one before adding 
 ## Done
 
 You can now keep using the generate.py file to push new data to the "In" location, and seconds later it should be transformed and in the "Out" location
+
+## Extra
+
+There is a basics.py file in the repo that shows how to use Hudi to do create, append, update, delete, cluster cleanup, time travel, incremental queries and schema evolution
