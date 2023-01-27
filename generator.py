@@ -3,13 +3,7 @@
 # -----------------------------------------------------------------------------------------
 
 try:
-  import os
-  import sys
-  import uuid
-  import boto3
-
   from pyspark.sql import SparkSession
-  from pyspark.sql.functions import col, asc, desc
   from faker import Faker
 
   print("All modules are loaded .....")

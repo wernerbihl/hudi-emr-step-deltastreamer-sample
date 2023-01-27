@@ -81,6 +81,85 @@ in_path  =  "s3://oml-dp-dataplatform-datalabs-eu-west-1/hudi_data/in/"
 
 With Amazon EMR release version 5.28.0 and later, Amazon EMR installs Hudi components by default when Spark, Hive, or Presto is installed. Otherwise you'll have to download hudi-spark-bundle from https://mvnrepository.com/artifact/org.apache.hudi/hudi-spark-bundle and placing it somewhere accessible from your script.
 
+Here's the script:
+
+```python
+# ----------------------------------------------------------------------------------------
+# Generate some sample data
+# -----------------------------------------------------------------------------------------
+
+try:
+  from pyspark.sql import SparkSession
+  from faker import Faker
+
+  print("All modules are loaded .....")
+
+except Exception as e:
+  print("Some modules are missing {} ".format(e))
+
+fake = Faker()
+
+# ----------------------------------------------------------------------------------------
+# Settings
+# -----------------------------------------------------------------------------------------
+
+database_name = "hudi"
+table_name = "hudi_in"
+in_path = "s3://oml-dp-dataplatform-datalabs-eu-west-1/hudi_data/in/"
+
+hudi_options = {
+  'hoodie.database.name': database_name,
+  'hoodie.table.name': table_name,
+  'hoodie.datasource.hive_sync.database': database_name,
+  'hoodie.datasource.hive_sync.table': table_name,
+  'hoodie.datasource.hive_sync.create_managed_table': 'true',
+  'hoodie.datasource.hive_sync.enable': 'true',
+  'hoodie.datasource.hive_sync.mode': 'hms',
+  'hoodie.datasource.write.precombine.field': 'ts',
+  'hoodie.datasource.write.storage.type': 'COPY_ON_WRITE', # Or "MERGE_ON_READ"
+  'hoodie.datasource.write.recordkey.field': 'emp_id',
+  'hoodie.datasource.write.operation': 'upsert',
+  'hoodie.datasource.write.reconcile.schema': 'true'
+}
+
+# ----------------------------------------------------------------------------------------
+# Spark Initialization
+# -----------------------------------------------------------------------------------------
+
+spark = SparkSession \
+  .builder \
+  .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") \
+  .config("spark.sql.hive.convertMetastoreParquet", "false") \
+  .getOrCreate()
+
+# ----------------------------------------------------------------------------------------
+# Create Sample Data
+# -----------------------------------------------------------------------------------------
+
+columns = ["emp_id", "employee_name", "phone", "department", "state", "salary", "age", "bonus", "ts"]
+
+def get_data(amount):
+  return [
+    (
+      fake.random_int(min=1, max=9999999999),
+      fake.name(),
+      fake.phone_number(),
+      fake.random_element(elements=('IT', 'HR', 'Sales', 'Marketing')),
+      fake.random_element(elements=('CA', 'NY', 'TX', 'FL', 'IL', 'RJ')),
+      fake.random_int(min=10000, max=150000),
+      fake.random_int(min=18, max=60),
+      fake.random_int(min=0, max=100000),
+      fake.unix_time()
+    ) for x in range(amount)
+  ]
+
+data = get_data(5)
+df = spark.createDataFrame(data=data, schema=columns)
+df.write.format("hudi").options(**hudi_options).mode("append").save(in_path)
+
+df.show(vertical=True, truncate=False)
+```
+
 To run the script:
 
 ```
@@ -92,6 +171,73 @@ spark-submit --jars /usr/lib/hudi/hudi-spark-bundle.jar generator.py
 In this repo there's a very simple script called streamer.py. This file has lots of configuration, so please make sure you follow each line and make sure it's relevant to your setup.
 
 This file will listen for the deltas streaming in from S3/SQS and do a basic transformation (mask the telephone number) before storing it in the "Out" S3 Location. Store the file somewhere on S3 and note it's location for the next step.
+
+```python
+# streamer.py
+# ----------------------------------------------------------------------------------------
+# Script for streaming data from Hudi Deltastreamer
+# -----------------------------------------------------------------------------------------
+
+import boto3
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import lit
+
+spark = SparkSession \
+  .builder \
+  .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") \
+  .config("spark.sql.hive.convertMetastoreParquet", "false") \
+  .getOrCreate()
+
+# ----------------------------------------------------------------------------------------
+# Settings
+# -----------------------------------------------------------------------------------------
+
+curr_session = boto3.session.Session()
+curr_region = curr_session.region_name
+
+sqs_url = 'https://sqs.eu-west-1.amazonaws.com/123456789012/HudiSQS'
+database_name = "hudi"
+table_name = "hudi_out"
+checkpoint_location = 's3://oml-dp-dataplatform-datalabs-eu-west-1/hudi_data/checkpoints/'
+in_path = "s3://oml-dp-dataplatform-datalabs-eu-west-1/hudi_data/in/"
+out_path = "s3://oml-dp-dataplatform-datalabs-eu-west-1/hudi_data/out/"
+partition_by = 'department' # (Optional) Partitions your data based on a field
+
+hudi_streaming_options = {
+  'hoodie.table.name': table_name,
+  'hoodie.database.name': database_name,
+  'hoodie.deltastreamer.s3.source.queue.url': sqs_url,
+  'hoodie.deltastreamer.s3.source.queue.region': curr_region,
+  'hoodie.datasource.hive_sync.database': database_name,
+  'hoodie.datasource.hive_sync.table': table_name,
+  'hoodie.datasource.hive_sync.create_managed_table': 'true',
+  'hoodie.datasource.hive_sync.enable': 'true',
+  'hoodie.datasource.hive_sync.mode': 'hms',
+  "hoodie.datasource.write.storage.type": "COPY_ON_WRITE",
+  'hoodie.datasource.write.recordkey.field': 'emp_id',
+  'hoodie.datasource.write.partitionpath.field': partition_by,
+  'hoodie.datasource.write.operation': 'upsert',
+  'hoodie.datasource.write.precombine.field': 'ts',
+  'hoodie.datasource.write.hive_style_partitioning': 'true',
+  'hoodie.datasource.write.reconcile.schema': 'true'
+}
+
+# ----------------------------------------------------------------------------------------
+# Read stream and do transformations
+# -----------------------------------------------------------------------------------------
+
+df = spark.readStream.format("hudi").load(in_path)
+
+df = df.withColumn("phone", lit("*** Masked ***"))
+
+df.writeStream.format("hudi") \
+    .options(**hudi_streaming_options) \
+    .outputMode("append") \
+    .option("path", out_path) \
+    .option("checkpointLocation", checkpoint_location) \
+    .start() \
+    .awaitTermination()
+```
 
 ## Step 6: Add a step to EMR cluster
 

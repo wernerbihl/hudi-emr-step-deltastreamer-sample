@@ -19,7 +19,7 @@ spark = SparkSession \
 curr_session = boto3.session.Session()
 curr_region = curr_session.region_name
 
-sqs_url = 'https://sqs.eu-west-1.amazonaws.com/767220686680/HudiSQS'
+sqs_url = 'https://sqs.eu-west-1.amazonaws.com/123456789012/HudiSQS'
 database_name = "hudi"
 table_name = "hudi_out"
 checkpoint_location = 's3://oml-dp-dataplatform-datalabs-eu-west-1/hudi_data/checkpoints/'
